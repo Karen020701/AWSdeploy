@@ -22,3 +22,26 @@ jobs:
       run: |
         docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest .
         docker push ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest
+
+  deploy-aws:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Set permissions for private key
+      run: |
+        echo "${{ secrets.AWS_EC2_KEY }}" > key.pem
+        chmod 600 key.pem
+
+    - name: Stop running container
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker stop apphtml || true'
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker rm apphtml || true'
+
+    - name: Pull Docker image
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest'
+
+    - name: Run new container
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker run -d -p 8080:80 --name apphtml ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest'
