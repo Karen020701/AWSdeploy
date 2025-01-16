@@ -1,0 +1,86 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches: [ "qa" ]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and Push Docker Image
+      run: |
+        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest .
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest
+
+  deploy-aws:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Set permissions for private key
+      run: |
+        echo "${{ secrets.AWS_EC2_KEY }}" > key.pem
+        chmod 600 key.pem
+
+    # Update system and Docker on Host 1
+    - name: Update system and install Docker if not present (Host 1)
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} << 'EOF'
+        sudo yum update -y
+        if ! command -v docker &> /dev/null; then
+          sudo yum install -y docker
+          sudo systemctl start docker
+          sudo systemctl enable docker
+        fi
+        sudo systemctl start docker
+        EOF
+
+    - name: Stop running container (Host 1)
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker stop apphtml || true'
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker rm apphtml || true'
+
+    - name: Pull Docker image (Host 1)
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest'
+
+    - name: Run new container (Host 1)
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker run -d -p 8080:80 --name apphtml ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest'
+
+    # Update system and Docker on Host 2
+    - name: Update system and install Docker if not present (Host 2)
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST1 }} << 'EOF'
+        sudo yum update -y
+        if ! command -v docker &> /dev/null; then
+          sudo yum install -y docker
+          sudo systemctl start docker
+          sudo systemctl enable docker
+        fi
+        sudo systemctl start docker
+        EOF
+
+    - name: Stop running container (Host 2)
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST1 }} 'sudo docker stop apphtml || true'
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST1 }} 'sudo docker rm apphtml || true'
+
+    - name: Pull Docker image (Host 2)
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST1 }} 'sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest'
+
+    - name: Run new container (Host 2)
+      run: |
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST1 }} 'sudo docker run -d -p 8080:80 --name apphtml ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest'
