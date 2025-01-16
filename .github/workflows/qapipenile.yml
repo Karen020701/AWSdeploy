@@ -20,8 +20,8 @@ jobs:
 
     - name: Build and Push Docker Image
       run: |
-        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/my-html-app:latest .
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/my-html-app:latest
+        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest .
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest
 
   deploy-aws:
     needs: build-and-push
@@ -57,13 +57,13 @@ jobs:
 
     - name: Stop running container
       run: |
-        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker stop my-html-app || true'
-        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker rm my-html-app || true'
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker stop apphtml || true'
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker rm apphtml || true'
 
     - name: Pull Docker image
       run: |
-        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/my-html-app:latest'
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest'
 
     - name: Run new container
       run: |
-        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker run -d -p 8080:80 --name my-html-app ${{ secrets.DOCKERHUB_USERNAME }}/my-html-app:latest'
+        ssh -o StrictHostKeyChecking=no -i key.pem ec2-user@${{ secrets.AWS_EC2_HOST }} 'sudo docker run -d -p 8080:80 --name apphtml ${{ secrets.DOCKERHUB_USERNAME }}/apphtml:latest'
